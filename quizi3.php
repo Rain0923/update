@@ -1065,7 +1065,7 @@
                 nextLevelBtn.style.display = 'block';
                 nextLevelBtn.style.background = '#226aad';
                 nextLevelBtn.style.color = '#fff';
-                nextLevelBtn.onclick = () => { window.location.href = 'quizb2.php'; };
+                nextLevelBtn.onclick = () => { window.location.href = 'quizi4.php'; };
                 // Add Home button
                 const homeBtn = document.createElement('button');
                 homeBtn.className = 'btn home-btn';

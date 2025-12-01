@@ -543,6 +543,14 @@
         let skippedQuestionSet = new Set(); // Track which questions have been skipped (to prevent multiple skips)
         let answeredQuestions = new Set(); // Track answered question indices
         let wrongAnswerCount = 0; // Track wrong answer attempts for current question
+
+        // Helper: check if an option index is correct for a question
+        function isCorrectIndex(question, index) {
+            if (Array.isArray(question.correct)) {
+                return question.correct.includes(index);
+            }
+            return index === question.correct;
+        }
         
         // DOM Elements
         const startScreen = document.getElementById('startScreen');
@@ -598,19 +606,53 @@
                 // Transform database format to game format
                 return data.map(q => {
                     const options = [q.choice_a, q.choice_b, q.choice_c, q.choice_d];
-                    // Find the index of the correct answer by comparing the value
-                    const correctIndex = options.findIndex(opt => 
-                        opt.toString().trim().toLowerCase() === q.correct_answer.toString().trim().toLowerCase()
-                    );
-                    
-                    // If not found by value, try to find by letter (A, B, C, D)
-                    const correct = correctIndex !== -1 ? correctIndex : 
-                        ['A', 'B', 'C', 'D'].indexOf(q.correct_answer.toString().trim().toUpperCase());
-                    
+                    const rawCorrect = q.correct_answer != null ? q.correct_answer.toString() : '';
+
+                    // Support multiple correct answers (comma/pipe/semicolon separated, by value or by letter A-D)
+                    const parts = rawCorrect
+                        .split(/[,|;]/)
+                        .map(p => p.trim())
+                        .filter(p => p.length > 0);
+
+                    const correctIndices = [];
+
+                    parts.forEach(part => {
+                        let idx = options.findIndex(opt =>
+                            opt != null &&
+                            opt.toString().trim().toLowerCase() === part.toLowerCase()
+                        );
+                        if (idx === -1) {
+                            // Try by letter A-D
+                            idx = ['A', 'B', 'C', 'D'].indexOf(part.toUpperCase());
+                        }
+                        if (idx !== -1 && !correctIndices.includes(idx)) {
+                            correctIndices.push(idx);
+                        }
+                    });
+
+                    // Fallback: if nothing matched, keep existing single-answer behaviour
+                    if (correctIndices.length === 0) {
+                        const singleIdx = options.findIndex(opt =>
+                            opt != null &&
+                            opt.toString().trim().toLowerCase() === rawCorrect.toLowerCase()
+                        );
+                        const fallback =
+                            singleIdx !== -1
+                                ? singleIdx
+                                : ['A', 'B', 'C', 'D'].indexOf(rawCorrect.trim().toUpperCase());
+
+                        return {
+                            question: q.question,
+                            options: options,
+                            // store as array for consistency
+                            correct: fallback !== -1 ? [fallback] : [0]
+                        };
+                    }
+
                     return {
                         question: q.question,
                         options: options,
-                        correct: correct !== -1 ? correct : 0 // Default to first option if not found
+                        correct: correctIndices
                     };
                 });
             } catch (error) {
@@ -705,9 +747,9 @@
                 // Disable if already answered
                 if (answeredQuestions.has(currentQuestionIndex)) {
                     button.disabled = true;
-                    if (index === question.correct) {
+                    if (isCorrectIndex(question, index)) {
                         button.classList.add('correct');
-                    } else if (optionsContainer.children[index]) {
+                    } else {
                         button.classList.add('incorrect');
                     }
                 }
@@ -733,9 +775,12 @@
             const question = questions[currentQuestionIndex];
             const options = optionsContainer.children;
             
-            // Check if already selected the correct answer
-            if (options[question.correct].classList.contains('correct')) {
-                return; // Do nothing if correct answer was already selected
+            // Check if already selected a correct answer
+            const anyCorrectMarked = Array.from(options).some((btn, idx) =>
+                isCorrectIndex(question, idx) && btn.classList.contains('correct')
+            );
+            if (anyCorrectMarked) {
+                return; // Do nothing if a correct answer was already selected
             }
             
             // Stop the timer for this question
@@ -746,7 +791,7 @@
             selectedOption.disabled = true;
             
             // Check answer
-            if (selectedIndex === question.correct) {
+            if (isCorrectIndex(question, selectedIndex)) {
                 // Correct answer
                 selectedOption.classList.add('correct');
                 playSound('correct');
@@ -826,12 +871,15 @@
                 // Restart timer after wrong answer
                 startTimer();
                 
-                // If only one option remains, it must be the correct one
+                // If only one option remains, it must be a correct one
                 const remainingOptions = Array.from(options).filter(opt => !opt.disabled);
                 if (remainingOptions.length === 1) {
-                    // Auto-select the last remaining (correct) option
+                    // Auto-select the first correct index
+                    const firstCorrectIndex = Array.isArray(question.correct)
+                        ? question.correct[0]
+                        : question.correct;
                     setTimeout(() => {
-                        selectAnswer(question.correct);
+                        selectAnswer(firstCorrectIndex);
                     }, 500);
                 }
             }
