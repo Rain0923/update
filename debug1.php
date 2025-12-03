@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Debugging Challenge</title>
+    <title>Debugging Level I</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -40,7 +40,7 @@
                     transparent 1px,
                     transparent 2px
                 );
-            padding: 25px;
+            padding: 40px 25px 10px; /* Reduced top padding to bring content higher */
         }
 
         .game-container {
@@ -49,6 +49,7 @@
             background: var(--screen);
             border: 4px solid var(--primary);
             padding: 30px;
+            margin-top: -20px; /* Pull the container up */
             border-radius: 10px;
             box-shadow: 
                 10px 10px 0 rgba(255, 0, 255, 0.2),
@@ -265,16 +266,11 @@
         }
 
         .result {
+            padding: 1.4rem;
             margin: 1rem 0;
-            padding: 0.8rem 1rem;
-            border-left: 4px solid transparent;
-            display: none;
             border-radius: 4px;
-            line-height: 1.5;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            font-size: 0.75rem;
-            max-width: 100%;
+            font-size: 1.1rem;
+            line-height: 1.7;
         }
         
         .result strong {
@@ -330,9 +326,11 @@
         }
 
         .hint {
-            margin: 1.2rem 0;
+            margin: 0.5rem 0 1.2rem 0;
             padding: 1.2rem 1.5rem;
             background: rgba(255, 255, 0, 0.1);
+            position: relative;
+            top: -10px;
             border-left: 4px solid var(--accent);
             color: var(--accent);
             display: none;
@@ -492,6 +490,22 @@
             }
         }
 
+        /* Animation for output result boxes */
+        @keyframes resultFadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-animate {
+            animation: resultFadeInUp 0.35s ease-out;
+        }
+
         /* Start Screen Styles */
         .start-screen {
             position: fixed;
@@ -519,6 +533,20 @@
             box-shadow: 0 0 30px rgba(255, 0, 255, 0.3);
             position: relative;
             overflow: hidden;
+        }
+
+        .lives-notification {
+            position: fixed;
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            z-index: 1000;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: none;
         }
 
         .start-content::before {
@@ -628,12 +656,12 @@
     <!-- Start Screen -->
     <div id="startScreen" class="start-screen">
         <div class="start-content">
-            <h1>PYTHON DEBUG CHALLENGE</h1>
+            <h1>DEBUGGING LEVEL I</h1>
             <div class="game-description">
                 <p>Find and fix Python code errors before time runs out!</p>
                 <div class="game-features">
                     <p><i class="fas fa-heart"></i> 3 Lives</p>
-                    <p><i class="fas fa-clock"></i> 90s per challenge</p>
+                    <p><i class="fas fa-clock"></i> 120s time limit</p>
                     <p><i class="fas fa-code"></i> Fix syntax and logic errors</p>
                 </div>
             </div>
@@ -657,8 +685,9 @@
             <div class="timer" id="timer">01:30</div>
         </div>
 
-        <h2 id="challengeTitle">Debug the Code</h2>
-        <p id="challengeDescription">Find and fix the error in the code below:</p>
+        <!-- Hidden placeholders so JS can still update these without showing them in the UI -->
+        <h2 id="challengeTitle" style="display:none;"></h2>
+        <p id="challengeDescription" style="display:none;"></p>
 
         <div class="code-container">
             <div class="code-header">
@@ -667,11 +696,9 @@
                     <i class="fas fa-lightbulb"></i> Hint
                 </button>
             </div>
-            <!-- Broken bug shown as read-only code -->
-            <div style="background:#17172e; border-bottom:1px solid var(--secondary); padding:1rem 1.5rem; color:#ff5555; font-family:'Courier New',monospace; font-size:15px;">
-                <label style="color:var(--accent); font-size:0.96em; margin-bottom:0.35em; display:block;">Broken Code:</label>
-                <pre id="buggyCodeDisplay" style="margin:0;white-space:pre-wrap;word-break:break-all;background:none;border:none;padding:0;user-select:text;">
-                </pre>
+            <!-- Hidden broken-code display to satisfy JS references without showing it -->
+            <div style="display:none;">
+                <pre id="buggyCodeDisplay"></pre>
             </div>
             <!-- Student input area -->
             <div style="padding:1rem 1.5rem 0.7rem 1.5rem; background:#101024;">
@@ -712,8 +739,7 @@
     <div id="levelComplete" class="level-complete">
         <div class="level-complete-content">
             <h2>Level Completed!</h2>
-            <p class="congrats-message">You've successfully completed all questions!</p>
-            <div class="final-score">Questions Answered: <span id="levelScore">0</span>/<span id="totalQuestions2">0</span></div>
+            <p class="congrats-message">Great job! You fixed all the bugs in this level.</p>
             <div class="button-group">
                 <button id="homeBtn" class="btn btn-secondary">
                     <i class="fas fa-home"></i> Home
@@ -728,99 +754,92 @@
     <script>
         // Game state
         let questions = [];
-        let currentIndex = 0;
+        let currentLevel = 0;
+        let health = 3;
+        let score = 0;
+        let readyForNextQuestion = false;
+        const TIME_LIMIT = 120; // 2 minutes in seconds
 
-        function loadQuestion() {
-            const q = questions[currentIndex];
+        // Cached DOM references
+        const healthBar = document.getElementById('healthBar');
+        const levelElement = document.getElementById('level');
+        const totalLevelsElement = document.getElementById('totalLevels');
+        const totalLevelsElement2 = document.getElementById('totalQuestions2');
 
-            if (!q) {
-                console.log("No question found!");
-                return;
-            }
+        const timerElement = document.getElementById('timer');
 
-            // UI updates for DB-driven questions (kept for future use)
-            document.getElementById("level").textContent = q.level || (currentIndex + 1);
-            document.getElementById("buggyCodeDisplay").textContent = q.code_snippet || '';
-            document.getElementById("codeEditor").value = q.code_snippet || '';
-
-            // Use the existing hint element (id="hint") instead of a non‑existent "hintText"
-            const hintEl = document.getElementById("hint");
-            if (hintEl && q.hint) {
-                hintEl.textContent = q.hint;
-            }
-        }
-
-        function nextQuestion() {
-            if (currentIndex < questions.length - 1) {
-                currentIndex++;
-                loadQuestion();
-            } else {
-                alert("🎉 You've completed all debugging levels!");
-            }
-        }
-
-        // Load questions from your DB (optional – game still works with local challenges array)
-        fetch("load_debugging_questions.php?language=Python&difficulty=Beginner")
-            .then(response => response.json())
-            .then(data => {
-                questions = data;
-                console.log("Questions loaded: ", questions);
-
-                if (questions.length > 0) {
-                    document.getElementById("totalLevels").textContent = questions.length;
-                    loadQuestion();
-                } else {
-                    console.warn("⚠ No debugging questions found!");
-                }
-            })
-            .catch(error => console.error("Fetch error:", error));
-
-        // Debug challenges - Focused on missing quotes
-        const challenges = [
-            {
-                title: "Missing Double Quotes",
-                description: "Add the missing double quotes to fix the print statement.",
-                code: `print(Hello, World!)`,
-                hint: "Text in Python needs to be enclosed in quotes.",
-                solution: `print("Hello, World!")`
-            },
-            {
-                title: "Missing Single Quotes",
-                description: "Add the missing single quotes around the name.",
-                code: `name = John
-print('Hello, ' + name)`,
-                hint: "Variable names don't need quotes, but string literals do.",
-                solution: `name = 'John'
-print('Hello, ' + name)`
-            }
-        ];
-
-        // DOM elements
-        const codeEditor = document.getElementById('codeEditor');
-        const runBtn = document.getElementById('runBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const showHintBtn = document.getElementById('showHintBtn');
         const hintElement = document.getElementById('hint');
         const resultElement = document.getElementById('result');
         const outputContainer = document.getElementById('outputContainer');
-        const healthBar = document.getElementById('healthBar');
-        const timerElement = document.getElementById('timer');
-        const levelElement = document.getElementById('level');
-        const totalLevelsElement = document.getElementById('totalLevels');
-        const challengeTitle = document.getElementById('challengeTitle');
-        const challengeDescription = document.getElementById('challengeDescription');
+        const codeEditor = document.getElementById('codeEditor');
+
+        const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const runBtn = document.getElementById('runBtn');
+        const showHintBtn = document.getElementById('showHintBtn');
+
         const gameOverScreen = document.getElementById('gameOver');
         const levelCompleteScreen = document.getElementById('levelComplete');
         const finalScoreElement = document.getElementById('finalScore');
-        const levelScoreElement = document.getElementById('levelScore');
         const totalQuestionsElement = document.getElementById('totalQuestions');
+        const levelScoreElement = document.getElementById('levelScore');
         const totalQuestionsElement2 = document.getElementById('totalQuestions2');
+
         const restartBtn = document.getElementById('restartBtn');
         const nextLevelBtn = document.getElementById('nextLevelBtn');
-        const nextQuestionBtn = document.getElementById('nextQuestionBtn');
-        let readyForNextQuestion = false;
 
-        // Initialize game
+        // Timer-related state
+        let timer = null;
+        let timeLeft = 0;
+        let originalCode = '';
+
+        // Utility function to normalize DB questions for gameplay
+        function normalizeQuestions(arr) {
+            if (!Array.isArray(arr)) return [];
+            return arr.map((q, idx) => ({
+                title: q.level ? `Debug #${q.level}` : `Debug #${idx+1}`,
+                description: '', // No description in database; you may add a field
+                code: q.code_snippet || '',
+                hint: q.hint || '',
+                solution: q.correct_code || '',
+                // NEW: expected program output coming from output_code column
+                output: q.output_code || '',
+                level: q.level || idx+1 // fallback
+            }));
+        }
+
+        // Function to shuffle an array (Fisher-Yates algorithm)
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]]; // Swap elements
+            }
+            return array;
+        }
+
+        // This replaces the old demo array. Fetch only level 1 questions and normalize.
+        fetch('load_debugging_questions.php?language=Python&difficulty=Beginner&level=1')
+          .then(response => response.json())
+          .then(data => {
+            // Filter to only include level 1 questions and shuffle them
+            const level1Questions = data.filter(q => q.level == 1);
+            const shuffledQuestions = shuffleArray([...level1Questions]); // Create a copy before shuffling
+            questions = normalizeQuestions(shuffledQuestions);
+            
+            console.log('Shuffled level 1 questions loaded:', questions);
+            
+            if (questions.length > 0) {
+                totalLevelsElement.textContent = questions.length;
+                totalLevelsElement2.textContent = questions.length;
+                initGame();
+            } else {
+                console.warn('⚠ No level 1 debugging questions found!');
+                // Show a message to the user
+                alert('No level 1 questions found. Please add some questions to the database.');
+            }
+          })
+          .catch(error => console.error('Fetch error:', error));
+
         function initGame() {
             currentLevel = 0;
             health = 3;
@@ -831,44 +850,49 @@ print('Hello, ' + name)`
             updateHealthBar();
             loadLevel(currentLevel);
             startTimer();
-            
-            // Set total questions (we have 5 levels)
-            const total = 5; // Fixed to show 5 questions
+            // Update total questions text
+            const total = questions.length;
             totalQuestionsElement.textContent = total;
             totalQuestionsElement2.textContent = total;
-            
             // Hide game over and level complete screens
             gameOverScreen.style.display = 'none';
             levelCompleteScreen.style.display = 'none';
         }
 
-        // Load a level
         function loadLevel(levelIndex) {
-            if (levelIndex >= challenges.length) {
-                // Game completed
+            if (levelIndex >= questions.length) {
                 endGame(true);
                 return;
             }
-
-            // Only start/restart the timer if this is a new level
             if (levelIndex !== currentLevel) {
                 startTimer();
             }
             
+            // Clear any existing output display
+            const existingOutput = document.querySelectorAll('.result');
+            existingOutput.forEach(output => {
+                output.style.display = 'none';
+            });
+            
+            // Clear the result element if it exists
+            if (resultElement) {
+                resultElement.textContent = '';
+                resultElement.className = 'result';
+                resultElement.style.display = 'none';
+            }
             currentLevel = levelIndex;
-            const challenge = challenges[levelIndex];
-            challengeTitle.textContent = challenge.title;
-            challengeDescription.textContent = challenge.description;
-            // NEW: Update the display for the buggy code
-            document.getElementById('buggyCodeDisplay').textContent = challenge.code;
-            codeEditor.value = challenge.code;
-            originalCode = challenge.code;
+            const challenge = questions[levelIndex];
+            challengeTitle.textContent = challenge.title || 'Debug Challenge';
+            challengeDescription.textContent = challenge.description || 'Find and fix the error in the code below:';
+            document.getElementById('buggyCodeDisplay').textContent = challenge.code || '';
+            codeEditor.value = challenge.code || '';
+            originalCode = challenge.code || '';
             hintElement.textContent = '';
             hintElement.style.display = 'none';
             resultElement.textContent = '';
             resultElement.className = 'result';
             resultElement.style.display = 'none';
-            levelElement.textContent = levelIndex + 1;
+            levelElement.textContent = (challenge.level || levelIndex + 1);
             readyForNextQuestion = false;
             nextQuestionBtn.style.display = 'none';
             nextQuestionBtn.disabled = true;
@@ -898,32 +922,67 @@ print('Hello, ' + name)`
         // Start the timer
         function startTimer() {
             clearInterval(timer);
-            timeLeft = 90; // 1.5 minutes per level
+            timeLeft = 90; // 1 minute and 30 seconds per level
             updateTimerDisplay();
             
             timer = setInterval(() => {
-                timeLeft--;
-                updateTimerDisplay();
-                
                 if (timeLeft <= 0) {
                     clearInterval(timer);
-                    // End game when time runs out
+                    // End game immediately when time runs out
+                    timeLeft = 0;
+                    updateTimerDisplay();
                     endGame(false);
+                    return;
                 }
+                
+                timeLeft--;
+                updateTimerDisplay();
             }, 1000);
         }
 
         // Update timer display
         function updateTimerDisplay() {
+            if (!timerElement) return;
+            
             const minutes = Math.floor(timeLeft / 60);
             const seconds = timeLeft % 60;
-            timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            timerElement.textContent = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
             
-            if (timeLeft <= 10) {
-                timerElement.classList.add('warning');
+            // Change color when time is running low
+            if (timeLeft <= 30) {
+                timerElement.style.color = '#ff6b6b';
+                if (timeLeft <= 10) {
+                    timerElement.style.animation = timeLeft % 2 === 0 ? 'pulse 0.5s infinite' : 'none';
+                }
             } else {
-                timerElement.classList.remove('warning');
+                timerElement.style.color = '';
+                timerElement.style.animation = 'none';
             }
+        }
+
+        // Show lives left notification
+        function showLivesLeft() {
+            const notification = document.createElement('div');
+            notification.className = 'lives-notification';
+            notification.textContent = `Lives left: ${health}`;
+            document.body.appendChild(notification);
+            
+            // Position the notification near the health bar
+            const healthBar = document.querySelector('.health-bar');
+            if (healthBar) {
+                const rect = healthBar.getBoundingClientRect();
+                notification.style.position = 'fixed';
+                notification.style.top = `${rect.bottom + 10}px`;
+                notification.style.left = `${rect.left}px`;
+                notification.style.transform = 'translateY(0)';
+            }
+            
+            // Animate and remove the notification
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transform = 'translateY(-20px)';
+                setTimeout(() => notification.remove(), 500);
+            }, 1000);
         }
 
         // Lose health
@@ -932,12 +991,10 @@ print('Hello, ' + name)`
             updateHealthBar();
             
             if (health <= 0) {
+                clearInterval(timer);
                 endGame(false);
             } else {
-                // Reset the level without resetting the timer
-                loadLevel(currentLevel);
-                // Show feedback to the player
-                showErrorNotification('Try again! Lives left: ' + health);
+                showLivesLeft();
             }
         }
 
@@ -1048,7 +1105,7 @@ print('Hello, ' + name)`
                     if (ch === ')') parenBalance--;
                 }
                 if (parenBalance !== 0) {
-                    issues.push({
+                issues.push({
                         type: 'syntax_parentheses',
                         message: 'Syntax Error: Unbalanced parentheses',
                         detail: 'The number of opening and closing parentheses does not match. In Python, every "(" must have a matching ")". Check your print statements and any function calls to make sure all parentheses are properly paired and in the correct order.'
@@ -1064,8 +1121,8 @@ print('Hello, ' + name)`
                             type: 'syntax_quotes',
                             message: 'Syntax Error: Unmatched quotes in line ' + (idx + 1),
                             detail: 'One of your lines has an odd number of single or double quotes, which means a string is not properly closed. In Python, strings must start and end with the same quote character. Carefully check line ' + (idx + 1) + ' and ensure every opening quote has a matching closing quote.'
-                        });
-                    }
+                });
+            }
                 });
             })();
             
@@ -1237,7 +1294,7 @@ print('Hello, ' + name)`
             clickSound.play().catch(e => console.log('Click sound failed to play:', e));
             
             try {
-                const challenge = challenges[currentLevel];
+                const challenge = questions[currentLevel];
                 const analysis = analyzeCode(code, challenge.code, challenge.solution);
                 
                 // Ensure there is a dedicated output box for this question
@@ -1279,40 +1336,40 @@ print('Hello, ' + name)`
 
                 if (outputBox) {
                     outputBox.style.display = 'block';
+                    // Trigger output animation
+                    outputBox.classList.remove('result-animate');
+                    // Force reflow so animation can restart
+                    void outputBox.offsetWidth;
+                    outputBox.classList.add('result-animate');
                 }
                 
                 if (analysis.isCorrect) {
-                    // Compact output: correct (very short summary explanation)
+                    // Compact output: show only the expected output from the database (output_code)
                     if (outputBox && outputStatus && outputDetails) {
                         outputBox.className = 'result success';
                         outputStatus.textContent = '✅ Correct answer';
-                        // Provide a concise summary instead of the long explanation
-                        let summary = 'Your fix matches the expected solution and runs without errors.';
-                        // Optional: tailor summary based on current challenge
-                        if (currentLevel === 0) {
-                            summary = 'You correctly added quotes so Python treats the text as a string.';
-                        } else if (currentLevel === 1) {
-                            summary = 'You correctly stored the name as a quoted string before printing.';
-                        }
-                        outputDetails.textContent = summary;
-                    }
 
-                    // Calculate score based on time left and health
-                    const timeBonus = Math.floor(timeLeft / 5);
-                    const levelScore = 100 + (health * 20) + timeBonus;
-                    score += levelScore;
-                    
-                    // Check if this was the last question
-                    if (currentLevel >= challenges.length - 1) {
-                        // If last question, show victory screen
-                        endGame(true);
-                    } else {
-                        // Enable manual progression to the next question
-                        readyForNextQuestion = true;
-                        nextQuestionBtn.disabled = false;
-                        nextQuestionBtn.style.display = 'inline-block';
+                        // Display only the real expected output for this question (no label text)
+                        const outputText = challenge.output || '';
+                        outputDetails.textContent = outputText;
                     }
+                
+                // Calculate score based on time left and health
+                const timeBonus = Math.floor(timeLeft / 5);
+                const levelScore = 100 + (health * 20) + timeBonus;
+                score += levelScore;
+                
+                // Check if this was the last question
+                if (currentLevel >= questions.length - 1) {
+                    // If last question, show victory screen
+                    endGame(true);
                 } else {
+                    // Enable manual progression to the next question
+                    readyForNextQuestion = true;
+                    nextQuestionBtn.disabled = false;
+                    nextQuestionBtn.style.display = 'inline-block';
+                }
+            } else {
                     // Incorrect solution - compact output only (short description + user code)
                     if (outputBox && outputStatus && outputDetails) {
                         outputBox.className = 'result error';
@@ -1347,30 +1404,29 @@ print('Hello, ' + name)`
                     resultElement.innerHTML += `<br><strong>Execution Error:</strong> ${error.message}`;
                 }
                 
-                // Show error notification
+                // Show error notification and deduct health immediately
                 showErrorNotification('Incorrect Code - Check feedback below');
-                
-                // Lose health after showing feedback (give user time to read)
-                setTimeout(() => {
-                    loseHealth();
-                }, 4000); // Give 4 seconds to read the feedback before resetting
+                loseHealth();
                 }
             } catch (error) {
                 // Handle any unexpected errors during analysis
                 resultElement.innerHTML = '<strong>❌ ERROR</strong><br><br>An unexpected error occurred while analyzing your code: ' + error.message;
                 resultElement.className = 'result error';
                 showErrorNotification('Analysis Error');
-                
-                setTimeout(() => {
-                    loseHealth();
-                }, 4000);
+                loseHealth();
             }
         }
 
-        // Show hint
+        // Toggle hint display
         function showHint() {
-            hintElement.textContent = challenges[currentLevel].hint;
-            hintElement.style.display = 'block';
+            if (hintElement.style.display === 'block') {
+                hintElement.style.display = 'none';
+            } else {
+                const hintText = questions[currentLevel].hint || '';
+                // Add a bold "Hint:" label above the actual hint text
+                hintElement.innerHTML = `<strong>Hint:</strong><br>${hintText}`;
+                hintElement.style.display = 'block';
+            }
         }
 
         // End the game
@@ -1398,7 +1454,7 @@ print('Hello, ' + name)`
                 } else if (timeLeft <= 0) {
                     gameOverTitle.textContent = 'Time\'s Up!';
                     // If time runs out on the first question without answering, show 0/5
-                    if (currentLevel === 0 && codeEditor.value.trim() === challenges[0].code.trim()) {
+                    if (currentLevel === 0 && codeEditor.value.trim() === questions[0].code.trim()) {
                         finalScoreElement.textContent = '0';
                     } else {
                         finalScoreElement.textContent = currentLevel;
@@ -1459,7 +1515,7 @@ print('Hello, ' + name)`
                 showErrorNotification('Complete the current challenge before proceeding.');
                 return;
             }
-            if (currentLevel < challenges.length - 1) {
+            if (currentLevel < questions.length - 1) {
                 currentLevel++;
                 loadLevel(currentLevel);
                 levelElement.textContent = currentLevel + 1;
